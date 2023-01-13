@@ -42,6 +42,7 @@
 
 (require 'ansi-color)
 (require 'comint)
+(require 'compile)
 (require 'project)
 (eval-when-compile (require 'rx))
 (require 'subr-x)
@@ -349,16 +350,18 @@ the parameter to pass to it.  Examples of query functions are:
           (if (not build-output)
               (message "Build has no output")
             (with-current-buffer (get-buffer-create buffer)
-              (let ((inhibit-read-only t))
-                (setq-local default-directory project-root)
-                (erase-buffer)
-                (insert build-output)
-                (zuul-log-mode)
-                (setq zuul--current-build zuul--build)
-                (setq zuul--current-builds zuul--builds)
-                (goto-char (point-max))
-                (select-window
-                 (display-buffer buffer zuul-build-display-buffer-action))))))))))
+              (setq-local default-directory project-root)
+              (erase-buffer)
+              (insert build-output)
+              (zuul-log-mode)
+              (setq zuul--current-build zuul--build)
+              (setq zuul--current-builds zuul--builds)
+              (goto-char (point-min))
+              (compilation-minor-mode t)
+              (compilation--ensure-parse (point-max))
+              (goto-char (point-max))
+              (select-window
+               (display-buffer buffer zuul-build-display-buffer-action)))))))))
 
 (cl-defun zuul-get-builds (&key
                            change
@@ -1122,7 +1125,7 @@ Optionally provide extra parameters PARAMS, PARSER, METHOD, BUFFER or HEADERS."
           (goto-char (prop-match-beginning property))
           (search-forward "$")
           (let* ((ov-prompt (make-overlay (prop-match-beginning property) (point)))
-                 (ov-input (make-overlay (point) (point-at-eol))))
+                 (ov-input (make-overlay (point) (line-end-position))))
             (overlay-put ov-prompt 'face 'zuul-command-prompt-face)
             (overlay-put ov-input 'face 'zuul-prompt-input-face)))))))
 
@@ -1140,6 +1143,7 @@ Optionally provide extra parameters PARAMS, PARSER, METHOD, BUFFER or HEADERS."
     (define-key map (kbd "C-c C-q") #'zuul-quit-build)
     (define-key map (kbd "C-c C-s") #'zuul-switch-buildset)
     (define-key map (kbd "C-c C-r") #'zuul-run-build-command)
+    (define-key map (kbd "g") #'zuul-run-build-command)
     map))
 
 (define-derived-mode zuul-log-mode fundamental-mode "Zuul Log"
@@ -1149,11 +1153,7 @@ Optionally provide extra parameters PARAMS, PARSER, METHOD, BUFFER or HEADERS."
   (setq zuul--project-files (zuul--project-files))
   (setq-local compilation-parse-errors-filename-function #'zuul--locate-file)
   (setq-local imenu-create-index-function #'zuul--imenu-index)
-  (compilation-minor-mode)
-  (setq-local font-lock-defaults '(compilation-mode-font-lock-keywords t))
   (add-hook 'eldoc-documentation-functions #'zuul--eldoc-function nil t)
-  (read-only-mode)
-  (font-lock-mode)
   (zuul--highlight-cmd))
 
 (provide 'zuul)
